@@ -142,7 +142,7 @@ misses[team]=0;
 history.push({type:"score",team,points});
 status(`✅ +${points}`);
 }
-catch(e){status("❌ Erreur");}
+catch(e){status("❌ "+e.message);}
 
 busy=false;
 refresh();
