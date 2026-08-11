@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Télécommande Mölkky</title>
+
+<style>
+body{
+margin:0;background:#0b1020;color:white;
+font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif
+}
+.wrap{max-width:820px;margin:auto;padding:12px}
+h1{text-align:center;font-size:22px}
+.status{
+background:#111827;border-radius:12px;padding:10px;
+margin-bottom:10px;text-align:center
+}
+.teams{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.team{background:#151c32;border-radius:16px;padding:8px}
+.home{border-top:5px solid #dc2626}
+.away{border-top:5px solid #2563eb}
+h2{text-align:center;font-size:17px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+button{
+border:0;border-radius:10px;color:white;font-weight:bold;
+font-size:18px;min-height:48px;padding:7px
+}
+.home .pts{background:#dc2626}
+.away .pts{background:#2563eb}
+.missrow{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+.miss{background:#991b1b}
+.minus{background:#475569}
+.xcount{text-align:center;margin:8px;font-size:14px}
+.bottom{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.undo{background:#475569}
+.period{background:#7c3aed}
+.display{background:#0f766e}
+.full{grid-column:1/-1}
+</style>
+</head>
+
+<body>
+<div class="wrap">
+
+<h1>🎯 Télécommande Mölkky</h1>
+<div id="status" class="status">Prêt</div>
+
+<div class="teams">
+
+<section class="team home">
+<h2>🔴 Équipe 1</h2>
+<div class="grid" id="homeGrid"></div>
+
+<div class="missrow">
+<button class="miss" onclick="miss('home')">❌ Raté</button>
+<button class="minus" onclick="missMinus('home')">− ❌</button>
+</div>
+
+<div class="xcount">
+Ratés : <span id="homeMiss">0</span>/3
+</div>
+</section>
+
+<section class="team away">
+<h2>🔵 Équipe 2</h2>
+<div class="grid" id="awayGrid"></div>
+
+<div class="missrow">
+<button class="miss" onclick="miss('away')">❌ Raté</button>
+<button class="minus" onclick="missMinus('away')">− ❌</button>
+</div>
+
+<div class="xcount">
+Ratés : <span id="awayMiss">0</span>/3
+</div>
+</section>
+
+</div>
+
+<div class="bottom">
+<button class="undo" onclick="undo()">↩️ Annuler</button>
+<button class="period" onclick="period(-1)">⬅ Manche</button>
+<button class="period full" onclick="period(1)">Manche suivante ➜</button>
+<button class="display full" onclick="window.open(DISPLAY_URL,'_blank')">
+👁 Ouvrir le score
+</button>
+</div>
+
+</div>
+
+<script>
+const TOKEN="ywcmmynxrtjgp";
+const BASE=`https://keepthescore.com/api/v1/sport/${TOKEN}/universal`;
+const DISPLAY_URL="https://keepthescore.com/scoreboard/nfwxkvppgqblr/";
+
+const DELAY=320;
+let busy=false;
+let history=[];
+let misses={home:0,away:0};
+
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+function status(t){
+document.getElementById("status").textContent=t;
+}
+
+function refresh(){
+document.getElementById("homeMiss").textContent=misses.home;
+document.getElementById("awayMiss").textContent=misses.away;
+}
+
+async function post(path){
+const r=await fetch(`${BASE}/${path}/`,{method:"POST"});
+if(!r.ok) throw new Error("Erreur KeepTheScore");
+}
+
+async function repeat(path,n){
+for(let i=0;i<n;i++){
+await post(path);
+if(i<n-1) await sleep(DELAY);
+}
+}
+
+async function score(team,points){
+if(busy)return;
+busy=true;
+
+try{
+status(`+${points}…`);
+
+await repeat(`${team}/score/increment`,points);
+
+if(misses[team]>0){
+await sleep(DELAY);
+await repeat(`${team}/fouls/decrement`,misses[team]);
+misses[team]=0;
+}
+
+history.push({type:"score",team,points});
+status(`✅ +${points}`);
+}
+catch(e){status("❌ Erreur");}
+
+busy=false;
+refresh();
+}
+
+async function miss(team){
+if(busy)return;
+busy=true;
+
+try{
+await post(`${team}/fouls/increment`);
+misses[team]++;
+history.push({type:"miss",team});
+status("✅ Raté ajouté");
+}
+catch(e){status("❌ Erreur");}
+
+busy=false;
+refresh();
+}
+
+async function missMinus(team){
+if(busy)return;
+if(misses[team]<=0)return;
+
+busy=true;
+
+try{
+await post(`${team}/fouls/decrement`);
+misses[team]--;
+status("✅ Raté retiré");
+}
+catch(e){status("❌ Erreur");}
+
+busy=false;
+refresh();
+}
+
+async function period(dir){
+if(busy)return;
+busy=true;
+
+try{
+await post(`period/${dir>0?"increment":"decrement"}`);
+history.push({type:"period",dir});
+status(dir>0?"✅ Manche suivante":"✅ Manche précédente");
+}
+catch(e){status("❌ Erreur");}
+
+busy=false;
+}
+
+async function undo(){
+const a=history.pop();
+
+if(!a){
+status("Rien à annuler");
+return;
+}
+
+if(busy)return;
+busy=true;
+
+try{
+if(a.type==="score"){
+await repeat(`${a.team}/score/decrement`,a.points);
+}
+
+if(a.type==="miss"){
+await post(`${a.team}/fouls/decrement`);
+misses[a.team]=Math.max(0,misses[a.team]-1);
+}
+
+if(a.type==="period"){
+await post(`period/${a.dir>0?"decrement":"increment"}`);
+}
+
+status("✅ Action annulée");
+}
+catch(e){status("❌ Erreur");}
+
+busy=false;
+refresh();
+}
+
+function build(team){
+const grid=document.getElementById(team+"Grid");
+
+for(let i=1;i<=12;i++){
+const b=document.createElement("button");
+b.className="pts";
+b.textContent="+"+i;
+b.onclick=()=>score(team,i);
+grid.appendChild(b);
+}
+}
+
+build("home");
+build("away");
+refresh();
+</script>
+
+</body>
+</html>
