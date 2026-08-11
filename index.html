@@ -111,8 +111,10 @@ document.getElementById("awayMiss").textContent=misses.away;
 }
 
 async function post(path){
-const r=await fetch(`${BASE}/${path}`,{method:"POST"});
-if(!r.ok) throw new Error("Erreur KeepTheScore");
+const url=`${BASE}/${path}`;
+const r=await fetch(url,{method:"POST"});
+const texte=await r.text();
+if(!r.ok) throw new Error(`${r.status} : ${texte}`);
 }
 
 async function repeat(path,n){
